@@ -69,8 +69,8 @@ pub struct StandardComposer {
     pub(crate) w_o: Vec<Variable>,
     pub(crate) w_4: Vec<Variable>,
 
-    // Public lookup table
-    pub(crate) lookup_table: PlookupTable4Arity,
+    /// Public lookup table
+    pub lookup_table: PlookupTable4Arity,
 
     /// A zero variable that is a part of the circuit description.
     /// We reserve a variable to be zero in the system
@@ -427,6 +427,112 @@ impl StandardComposer {
         self.n += 1;
     }
 
+    /// Utility function that allows to check on the "front-end"
+    /// side of the PLONK implementation if the identity polynomial
+    /// is satisfied for each one of the [`StandardComposer`]'s gates.
+    ///
+    /// The recommended usage is to derive the std output and the std error to a
+    /// text file and analyze there the gates.
+    ///
+    /// # Panic
+    /// The function by itself will print each circuit gate info until one of
+    /// the gates does not satisfy the equation or there are no more gates. If
+    /// the cause is an unsatisfied gate equation, the function will panic.
+    pub fn check_circuit_satisfied(&self) {
+        let w_l: Vec<&BlsScalar> = self
+            .w_l
+            .iter()
+            .map(|w_l_i| self.variables.get(&w_l_i).unwrap())
+            .collect();
+        let w_r: Vec<&BlsScalar> = self
+            .w_r
+            .iter()
+            .map(|w_r_i| self.variables.get(&w_r_i).unwrap())
+            .collect();
+        let w_o: Vec<&BlsScalar> = self
+            .w_o
+            .iter()
+            .map(|w_o_i| self.variables.get(&w_o_i).unwrap())
+            .collect();
+        let w_4: Vec<&BlsScalar> = self
+            .w_4
+            .iter()
+            .map(|w_4_i| self.variables.get(&w_4_i).unwrap())
+            .collect();
+        // Computes f(f-1)(f-2)(f-3)
+        let delta = |f: BlsScalar| -> BlsScalar {
+            let f_1 = f - BlsScalar::one();
+            let f_2 = f - BlsScalar::from(2);
+            let f_3 = f - BlsScalar::from(3);
+            f * f_1 * f_2 * f_3
+        };
+        let pi_vec = self.public_inputs.clone();
+        let four = BlsScalar::from(4);
+        for i in 0..self.n {
+            let qm = self.q_m[i];
+            let ql = self.q_l[i];
+            let qr = self.q_r[i];
+            let qo = self.q_o[i];
+            let qc = self.q_c[i];
+            let q4 = self.q_4[i];
+            let qarith = self.q_arith[i];
+            let qrange = self.q_range[i];
+            let qlogic = self.q_logic[i];
+            let qfixed = self.q_fixed_group_add[i];
+            let qvar = self.q_variable_group_add[i];
+            let pi = pi_vec[i];
+
+            let a = w_l[i];
+            let a_next = w_l[(i + 1) % self.n];
+            let b = w_r[i];
+            let b_next = w_r[(i + 1) % self.n];
+            let c = w_o[i];
+            let d = w_4[i];
+            let d_next = w_4[(i + 1) % self.n];
+            println!(
+                "--------------------------------------------\n
+            #Gate Index = {}
+            #Selector Polynomials:\n
+            - qm -> {:?}\n
+            - ql -> {:?}\n
+            - qr -> {:?}\n
+            - q4 -> {:?}\n
+            - qo -> {:?}\n
+            - qc -> {:?}\n
+            - q_arith -> {:?}\n
+            - q_range -> {:?}\n
+            - q_logic -> {:?}\n
+            - q_fixed_group_add -> {:?}\n
+            - q_variable_group_add -> {:?}\n
+            # Witness polynomials:\n
+            - w_l -> {:?}\n
+            - w_r -> {:?}\n
+            - w_o -> {:?}\n
+            - w_4 -> {:?}\n",
+                i, qm, ql, qr, q4, qo, qc, qarith, qrange, qlogic, qfixed, qvar, a, b, c, d
+            );
+            let k = qarith * ((qm * a * b) + (ql * a) + (qr * b) + (qo * c) + (q4 * d) + pi + qc)
+                + qlogic
+                    * (((delta(a_next - four * a) - delta(b_next - four * b)) * c)
+                        + delta(a_next - four * a)
+                        + delta(b_next - four * b)
+                        + delta(d_next - four * d)
+                        + match (qlogic == BlsScalar::one(), qlogic == -BlsScalar::one()) {
+                            (true, false) => (a & b) - d,
+                            (false, true) => (a ^ b) - d,
+                            (false, false) => BlsScalar::zero(),
+                            _ => unreachable!(),
+                        })
+                + qrange
+                    * (delta(c - four * d)
+                        + delta(b - four * c)
+                        + delta(a - four * b)
+                        + delta(d_next - four * a));
+
+            assert_eq!(k, BlsScalar::zero(), "Check failed at gate {}", i,);
+        }
+    }
+
     /// Adds a plookup gate to the circuit with its corresponding
     /// constraints.
     ///
@@ -478,6 +584,13 @@ impl StandardComposer {
 
         c
     }
+
+    /// When StandardComposer is initialised, it spawns a dummy table
+    /// with 3 entries that should not be removed. This function appends
+    /// its input table to the composer's dummy table
+    pub fn append_lookup_table(&mut self, table: &PlookupTable4Arity) {
+        table.0.iter().for_each(|k| self.lookup_table.0.push(*k))
+    }
 }
 
 #[cfg(test)]
@@ -485,7 +598,8 @@ mod tests {
     use super::super::helper::*;
     use super::*;
     use crate::commitment_scheme::kzg10::PublicParameters;
-    use crate::plookup::PreprocessedTable4Arity;
+    use crate::constraint_system::helper::gadget_plookup_tester;
+    use crate::plookup::{PlookupTable4Arity, PreprocessedTable4Arity};
     use crate::proof_system::{Prover, Verifier};
 
     #[test]
@@ -601,8 +715,125 @@ mod tests {
             },
             512,
         );
-
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_gadget() {
+        let mut t = PlookupTable4Arity::new();
+        t.insert_special_row(
+            BlsScalar::from(12),
+            BlsScalar::from(12),
+            BlsScalar::from(12),
+            BlsScalar::from(12),
+        );
+        t.insert_special_row(
+            BlsScalar::from(3),
+            BlsScalar::from(0),
+            BlsScalar::from(12),
+            BlsScalar::from(341),
+        );
+        t.insert_special_row(
+            BlsScalar::from(341),
+            BlsScalar::from(341),
+            BlsScalar::from(10),
+            BlsScalar::from(10),
+        );
+        let res = gadget_plookup_tester(
+            |composer| {
+                let twelve = composer.add_witness_to_circuit_description(BlsScalar::from(12));
+                let three = composer.add_witness_to_circuit_description(BlsScalar::from(3));
+                let ten = composer.add_witness_to_circuit_description(BlsScalar::from(10));
+                let zero = composer.add_witness_to_circuit_description(BlsScalar::from(0));
+                let three_four_one =
+                    composer.add_witness_to_circuit_description(BlsScalar::from(341));
+                composer.plookup_gate(twelve, twelve, twelve, Some(twelve), BlsScalar::zero());
+                composer.plookup_gate(twelve, twelve, twelve, Some(twelve), BlsScalar::zero());
+                composer.plookup_gate(three, zero, twelve, Some(three_four_one), BlsScalar::zero());
+                composer.plookup_gate(
+                    three_four_one,
+                    three_four_one,
+                    ten,
+                    Some(ten),
+                    BlsScalar::zero(),
+                );
+            },
+            65,
+            t,
+        );
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_gadget_fail() {
+        let mut t = PlookupTable4Arity::new();
+        t.insert_special_row(
+            BlsScalar::from(12),
+            BlsScalar::from(12),
+            BlsScalar::from(12),
+            BlsScalar::from(12),
+        );
+        let res = gadget_plookup_tester(
+            |composer| {
+                let twelve = composer.add_witness_to_circuit_description(BlsScalar::from(12));
+                let three = composer.add_witness_to_circuit_description(BlsScalar::from(3));
+                composer.plookup_gate(twelve, twelve, twelve, Some(three), BlsScalar::zero());
+            },
+            65,
+            t,
+        );
+        assert!(res.is_err());
+    }
+
+    #[test]
+    // XXX: Move this to integration tests
+    fn test_multiple_proofs() {
+        let public_parameters = PublicParameters::setup(2 * 30, &mut rand::thread_rng()).unwrap();
+
+        // Create a prover struct
+        let mut prover = Prover::new(b"demo");
+
+        // Add gadgets
+        dummy_gadget(10, prover.mut_cs());
+
+        // Commit Key
+        let (ck, _) = public_parameters.trim(2 * 20).unwrap();
+
+        // Preprocess circuit
+        prover.preprocess(&ck).unwrap();
+
+        let public_inputs = prover.cs.public_inputs.clone();
+        let lookup_table = prover.cs.lookup_table.clone();
+
+        let mut proofs = Vec::new();
+
+        // Compute multiple proofs
+        for _ in 0..3 {
+            proofs.push(prover.prove(&ck).unwrap());
+
+            // Add another witness instance
+            dummy_gadget(10, prover.mut_cs());
+        }
+
+        // Verifier
+        //
+        let mut verifier = Verifier::new(b"demo");
+
+        // Add gadgets
+        dummy_gadget(10, verifier.mut_cs());
+
+        // Commit and Verifier Key
+        let (ck, vk) = public_parameters.trim(2 * 20).unwrap();
+
+        // Preprocess
+        verifier.preprocess(&ck).unwrap();
+
+        for proof in proofs {
+            assert!(verifier
+                .verify(&proof, &vk, &public_inputs, &lookup_table)
+                .is_ok());
+        }
     }
 
     #[test]
@@ -633,6 +864,7 @@ mod tests {
         composer.plookup_gate(two, three, result, Some(one), BlsScalar::one());
         composer.plookup_gate(two, three, result, Some(one), BlsScalar::one());
         composer.plookup_gate(two, three, result, Some(one), BlsScalar::one());
+        composer.plookup_gate(two, two, two, Some(two), BlsScalar::one());
 
         composer.big_add(
             (BlsScalar::one(), two),
@@ -661,18 +893,7 @@ mod tests {
     }
 
     #[test]
-    /// Tests that a circuit initially has 3 gates
-    fn test_initial_circuit_size() {
-        let composer: StandardComposer = StandardComposer::new();
-        // Circuit size is n+3 because
-        // - We have an extra gate which forces the first witness to be zero. This is used when the advice wire is not being used.
-        // - We have two gates which ensure that the permutation polynomial is not the identity and
-        // - Another gate which ensures that the selector polynomials are not all zeroes
-        assert_eq!(3, composer.total_size())
-    }
-
-    #[test]
-    // XXX: Move this to integration tests
+    #[ignore]
     fn test_plookup_proof() {
         let public_parameters = PublicParameters::setup(2 * 30, &mut rand::thread_rng()).unwrap();
 
@@ -681,7 +902,8 @@ mod tests {
 
         // Add gadgets
         dummy_gadget_plookup(4, prover.mut_cs());
-
+        prover.cs.lookup_table.insert_multi_mul(0, 3);
+        // prover.cs.
         // Commit Key
         let (ck, _) = public_parameters.trim(2 * 20).unwrap();
 
