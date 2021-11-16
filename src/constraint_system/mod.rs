@@ -17,7 +17,7 @@ pub mod arithmetic;
 /// Blake2s hash widget
 pub mod blake2s;
 /// MASP
-pub mod masp;
+//pub mod masp;
 /// Boolean gate
 pub mod boolean;
 /// Elliptic Curve Crypto gates

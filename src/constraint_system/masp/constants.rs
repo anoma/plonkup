@@ -1,6 +1,6 @@
 use dusk_jubjub::{JubJubAffine, JubJubExtended};
 use dusk_bls12_381::BlsScalar;
-use lazy_static::lazy_static;
+//use lazy_static::lazy_static;
 
 
 /// The generators (for each segment) used in all Pedersen commitments.
