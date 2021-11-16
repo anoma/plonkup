@@ -188,7 +188,7 @@ impl Proof {
         lookup_table: &PlookupTable4Arity,
         pub_inputs: &[BlsScalar],
     ) -> Result<(), Error> {
-        let domain = EvaluationDomain::new(verifier_key.n)?;
+        let domain = EvaluationDomain::new(verifier_key.n).unwrap();
         // Subgroup checks are done when the proof is deserialised.
 
         // In order for the Verifier and Prover to have the same view in the non-interactive setting
@@ -398,6 +398,7 @@ impl Proof {
         // Add commitment to openings to transcript
         transcript.append_commitment(b"w_z", &self.w_z_comm);
         transcript.append_commitment(b"w_z_w", &self.w_zw_comm);
+
         // Batch check
         if opening_key
             .batch_check(

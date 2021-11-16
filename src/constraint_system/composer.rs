@@ -32,42 +32,42 @@ use std::collections::HashMap;
 #[derive(Debug)]
 pub struct StandardComposer {
     // n represents the number of arithmetic gates in the circuit
-    pub(crate) n: usize,
+    pub n: usize,
 
     // Selector vectors
     //
     // Multiplier selector
-    pub(crate) q_m: Vec<BlsScalar>,
+    pub q_m: Vec<BlsScalar>,
     // Left wire selector
-    pub(crate) q_l: Vec<BlsScalar>,
+    pub q_l: Vec<BlsScalar>,
     // Right wire selector
-    pub(crate) q_r: Vec<BlsScalar>,
+    pub q_r: Vec<BlsScalar>,
     // Output wire selector
-    pub(crate) q_o: Vec<BlsScalar>,
+    pub q_o: Vec<BlsScalar>,
     // Fourth wire selector
-    pub(crate) q_4: Vec<BlsScalar>,
+    pub q_4: Vec<BlsScalar>,
     // Constant wire selector
-    pub(crate) q_c: Vec<BlsScalar>,
+    pub q_c: Vec<BlsScalar>,
     // Arithmetic wire selector
-    pub(crate) q_arith: Vec<BlsScalar>,
+    pub q_arith: Vec<BlsScalar>,
     // Range selector
-    pub(crate) q_range: Vec<BlsScalar>,
+    pub q_range: Vec<BlsScalar>,
     // Logic selector
-    pub(crate) q_logic: Vec<BlsScalar>,
+    pub q_logic: Vec<BlsScalar>,
     // Fixed base group addition selector
-    pub(crate) q_fixed_group_add: Vec<BlsScalar>,
+    pub q_fixed_group_add: Vec<BlsScalar>,
     // Variable base group addition selector
-    pub(crate) q_variable_group_add: Vec<BlsScalar>,
+    pub q_variable_group_add: Vec<BlsScalar>,
     // Plookup gate wire selector
-    pub(crate) q_lookup: Vec<BlsScalar>,
+    pub q_lookup: Vec<BlsScalar>,
     /// Public inputs vector
     pub public_inputs: Vec<BlsScalar>,
 
     // Witness vectors
-    pub(crate) w_l: Vec<Variable>,
-    pub(crate) w_r: Vec<Variable>,
-    pub(crate) w_o: Vec<Variable>,
-    pub(crate) w_4: Vec<Variable>,
+    pub w_l: Vec<Variable>,
+    pub w_r: Vec<Variable>,
+    pub w_o: Vec<Variable>,
+    pub w_4: Vec<Variable>,
 
     /// Public lookup table
     pub lookup_table: PlookupTable4Arity,
@@ -76,13 +76,13 @@ pub struct StandardComposer {
     /// We reserve a variable to be zero in the system
     /// This is so that when a gate only uses three wires, we set the fourth wire to be
     /// the variable that references zero
-    pub(crate) zero_var: Variable,
+    pub zero_var: Variable,
 
     // These are the actual variable values
     // N.B. They should not be exposed to the end user once added into the composer
-    pub(crate) variables: HashMap<Variable, BlsScalar>,
+    pub variables: HashMap<Variable, BlsScalar>,
 
-    pub(crate) perm: Permutation,
+    pub perm: Permutation,
 }
 
 impl StandardComposer {
@@ -712,9 +712,16 @@ mod tests {
                     BlsScalar::zero(),
                     BlsScalar::zero(),
                 );
+
+                let m3_var = composer.add_input(BlsScalar::from(m3 as u64));
+
+                composer.assert_equal(m3_var, result);
+                println!("m3 {:?}", m3);
+                println!("result {:?}", composer.variables[&result].reduce().0[0]);
             },
             512,
         );
+
         assert!(res.is_ok());
     }
 

@@ -26,7 +26,7 @@ pub struct Prover {
     /// ProverKey which is used to create proofs about a specific plookup circuit
     pub prover_key: Option<ProverKey>,
 
-    pub(crate) cs: StandardComposer,
+    pub cs: StandardComposer,
     /// Store the messages exchanged during the preprocessing stage
     /// This is copied each time, we make a proof
     pub preprocessed_transcript: Transcript,
@@ -81,7 +81,7 @@ impl Prover {
         self.cs = StandardComposer::new();
     }
     /// Convert variables to their actual witness values.
-    pub(crate) fn to_scalars(&self, vars: &[Variable]) -> Vec<BlsScalar> {
+    pub fn to_scalars(&self, vars: &[Variable]) -> Vec<BlsScalar> {
         vars.par_iter().map(|var| self.cs.variables[var]).collect()
     }
 
@@ -536,7 +536,7 @@ pub fn compute_quotient_opening_poly(
 }
 
 /// Split `t(X)` poly into 4 degree `n` polynomials.
-pub(crate) fn split_tx_poly(
+pub fn split_tx_poly(
     n: usize,
     t_x: &Polynomial,
 ) -> (Polynomial, Polynomial, Polynomial, Polynomial) {
